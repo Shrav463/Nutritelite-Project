@@ -15,7 +15,7 @@ node_modules
 dist
 .env
 .DS_Store
-
+.env.example
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
