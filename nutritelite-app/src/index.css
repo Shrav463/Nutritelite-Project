@@ -1,0 +1,217 @@
+/* =========================
+   src/index.css
+   ========================= */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+/* Flip card helpers */
+.flip-card {
+  perspective: 1200px;
+}
+.flip-inner {
+  transform-style: preserve-3d;
+  transition: transform 0.7s;
+}
+.flip-card:hover .flip-inner,
+.flip-card:focus-within .flip-inner {
+  transform: rotateY(180deg);
+}
+.flip-front,
+.flip-back {
+  backface-visibility: hidden;
+}
+.flip-back {
+  transform: rotateY(180deg);
+}
+
+/* ============================= */
+/* Utilities */
+/* ============================= */
+@layer utilities {
+  /* -----------------------------------
+     HERO / MAIN TOP BACKGROUND
+  ----------------------------------- */
+  .bg-plant-bg {
+    background: radial-gradient(
+        1200px 600px at 20% 10%,
+        rgba(255, 255, 255, 0.18),
+        transparent 55%
+      ),
+      radial-gradient(
+        900px 500px at 90% 30%,
+        rgba(255, 255, 255, 0.14),
+        transparent 55%
+      ),
+      linear-gradient(180deg, #0f7a74 0%, #0b5f5a 100%);
+  }
+
+  /* -----------------------------------
+     SOFT SECTION BACKGROUND
+  ----------------------------------- */
+  .bg-plant-soft {
+    background: radial-gradient(
+        200px 200px at 15% 25%,
+        rgba(255, 255, 255, 0.18),
+        transparent 60%
+      ),
+      radial-gradient(
+        180px 180px at 85% 35%,
+        rgba(255, 255, 255, 0.14),
+        transparent 60%
+      ),
+      radial-gradient(
+        120px 120px at 40% 80%,
+        rgba(255, 255, 255, 0.12),
+        transparent 60%
+      ),
+      linear-gradient(180deg, #1c8f88 0%, #28a39a 45%, #7fded3 100%);
+  }
+
+  /* -----------------------------------
+     LIGHT MINT BACKGROUND
+     (Login / Signup pages)
+  ----------------------------------- */
+  .bg-plant-pattern {
+    background: linear-gradient(180deg, #e6fffa 60%, #e6fffa 60%, #e6fffa 70%);
+  }
+
+  /* ✅ Triangle clip utility (for the big image) */
+  .clip-triangle-right {
+    clip-path: polygon(35% 0%, 100% 0%, 100% 100%, 0% 100%);
+  }
+
+  /* -----------------------------------
+     BUBBLES (Reusable)
+  ----------------------------------- */
+  .bubble {
+    position: absolute;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.22);
+    filter: blur(0.2px);
+  }
+
+  .bubble-1 {
+    width: 140px;
+    height: 140px;
+    left: -40px;
+    top: 40px;
+  }
+  .bubble-2 {
+    width: 80px;
+    height: 80px;
+    right: 36px;
+    top: 90px;
+  }
+  .bubble-3 {
+    width: 170px;
+    height: 170px;
+    right: -50px;
+    bottom: -40px;
+  }
+  .bubble-4 {
+    width: 95px;
+    height: 95px;
+    left: 60px;
+    bottom: 40px;
+  }
+  .bubble-5 {
+    width: 14px;
+    height: 14px;
+    left: 46%;
+    top: 36%;
+    background: rgba(255, 255, 255, 0.35);
+  }
+  .bubble-6 {
+    width: 22px;
+    height: 22px;
+    left: 22%;
+    bottom: 22%;
+    background: rgba(255, 255, 255, 0.28);
+  }
+
+  /* -----------------------------------
+     INPUT / BUTTON HELPERS
+  ----------------------------------- */
+  .plant-input {
+    @apply flex items-center gap-3 rounded-full bg-white border border-slate-200 px-4 py-3 shadow-sm;
+  }
+
+  .plant-field {
+    @apply w-full outline-none bg-transparent text-slate-700 placeholder:text-slate-400;
+  }
+
+  .plant-icon {
+    @apply text-slate-400 text-sm;
+  }
+
+  .social-btn {
+    @apply h-11 w-11 rounded-2xl border border-slate-200 bg-white text-slate-700 font-semibold shadow-sm hover:bg-slate-50 active:scale-[0.98] transition;
+  }
+}
+/* ============================= */
+/* HERO BG: show & animate only on hover */
+/* ============================= */
+
+.hero-hover-wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+/* default hidden */
+.hero-bg-hover {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  opacity: 0;
+  transform: scale(1);
+  transition: opacity 400ms ease;
+  pointer-events: none;
+}
+
+/* keep overlay always (for readability) */
+.hero-hover-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    to right,
+    rgba(11, 111, 102, 0.95),
+    rgba(11, 111, 102, 0.85),
+    rgba(11, 111, 102, 0.65)
+  );
+  pointer-events: none;
+}
+
+/* on hover: show + animate */
+.hero-hover-wrap:hover .hero-bg-hover {
+  opacity: 1;
+  animation: heroKenBurnsHover 18s ease-in-out infinite alternate;
+}
+
+/* continuous animation */
+@keyframes heroKenBurnsHover {
+  0% {
+    transform: scale(1) translate(0, 0);
+  }
+  50% {
+    transform: scale(1.05) translate(-1%, -1%);
+  }
+  100% {
+    transform: scale(1.08) translate(-2%, -2%);
+  }
+}
