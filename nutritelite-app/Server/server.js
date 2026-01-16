@@ -6,7 +6,36 @@ import OpenAI from "openai";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+/**
+ * ✅ CORS (allow your Netlify frontend + local dev)
+ * Put this BEFORE routes.
+ */
+const allowedOrigins = [
+  "https://nutrilite-app.netlify.app",
+  "http://localhost:5173",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like curl, server-to-server)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Helpful for browser preflight requests
+app.options("*", cors());
+
 app.use(express.json({ limit: "2mb" }));
 
 const PORT = process.env.PORT || 5000;
@@ -27,7 +56,9 @@ app.get("/health", (_req, res) => {
 app.post("/api/usda/search", async (req, res) => {
   try {
     if (!USDA_API_KEY) {
-      return res.status(500).json({ error: "USDA_API_KEY is not set on the server." });
+      return res
+        .status(500)
+        .json({ error: "USDA_API_KEY is not set on the server." });
     }
 
     const { query, pageSize = 12, dataType } = req.body || {};
@@ -35,15 +66,20 @@ app.post("/api/usda/search", async (req, res) => {
 
     if (q.length < 2) return res.json({ foods: [] });
 
-    const resp = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(USDA_API_KEY)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: q,
-        pageSize,
-        dataType: Array.isArray(dataType) ? dataType : undefined,
-      }),
-    });
+    const resp = await fetch(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(
+        USDA_API_KEY
+      )}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q,
+          pageSize,
+          dataType: Array.isArray(dataType) ? dataType : undefined,
+        }),
+      }
+    );
 
     const data = await resp.json();
     return res.status(resp.ok ? 200 : resp.status).json(data);
@@ -56,14 +92,18 @@ app.post("/api/usda/search", async (req, res) => {
 app.get("/api/usda/food/:fdcId", async (req, res) => {
   try {
     if (!USDA_API_KEY) {
-      return res.status(500).json({ error: "USDA_API_KEY is not set on the server." });
+      return res
+        .status(500)
+        .json({ error: "USDA_API_KEY is not set on the server." });
     }
 
     const { fdcId } = req.params;
     if (!fdcId) return res.status(400).json({ error: "Missing fdcId" });
 
     const resp = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/food/${encodeURIComponent(fdcId)}?api_key=${encodeURIComponent(USDA_API_KEY)}`
+      `https://api.nal.usda.gov/fdc/v1/food/${encodeURIComponent(
+        fdcId
+      )}?api_key=${encodeURIComponent(USDA_API_KEY)}`
     );
 
     const data = await resp.json();
@@ -107,7 +147,6 @@ app.post("/api/chat", async (req, res) => {
     return res.status(500).json({ error: "Chat failed", text: "" });
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
