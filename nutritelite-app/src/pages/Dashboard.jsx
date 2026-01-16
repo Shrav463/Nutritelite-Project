@@ -1,7 +1,7 @@
+// src/pages/Dashboard.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Footer from "../components/Footer";
-import NutriLiteAssitant from "../components/AIChatWidget";
 
 import {
   loadDays,
@@ -16,6 +16,9 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+
+  // ✅ Render/Netlify base (empty in local dev if you use Vite proxy)
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
   // -----------------------------
   // UI / Mode
@@ -149,153 +152,153 @@ export default function Dashboard() {
   }, [mode]);
 
   // -----------------------------
-  // Draft: load once, save always
+  // Draft: load once
   // -----------------------------
-useEffect(() => {
-  const draft = loadDraft();
+  useEffect(() => {
+    const draft = loadDraft();
 
-  // 1) Prefer draft (what user is currently working on)
-  if (draft && draft.dateKey === todayKey) {
-    setMealLog(draft.mealLog || makeEmptyLog());
-    setWaterCups(Number(draft.waterCups) || 0);
-    setSteps(Number(draft.steps) || 2500);
-    if (draft.mode) setMode(draft.mode);
-    if (draft.dailyGoal) setDailyGoal(Number(draft.dailyGoal) || 2000);
-    setLastSavedAt(draft.lastSavedAt || null);
-    return;
-  }
+    // 1) Prefer draft (what user is currently working on)
+    if (draft && draft.dateKey === todayKey) {
+      setMealLog(draft.mealLog || makeEmptyLog());
+      setWaterCups(Number(draft.waterCups) || 0);
+      setSteps(Number(draft.steps) || 2500);
+      if (draft.mode) setMode(draft.mode);
+      if (draft.dailyGoal) setDailyGoal(Number(draft.dailyGoal) || 2000);
+      setLastSavedAt(draft.lastSavedAt || null);
+      return;
+    }
 
-  // 2) If no draft, load from SAVED day (so old meals don’t disappear)
-  const days = loadDays();
-  const savedToday = days?.[todayKey];
+    // 2) If no draft, load from SAVED day (so old meals don’t disappear)
+    const days = loadDays();
+    const savedToday = days?.[todayKey];
 
-  if (savedToday) {
-    setMealLog(savedToday.mealLog || makeEmptyLog());
-    setWaterCups(Number(savedToday.waterCups) || 0);
-    setSteps(Number(savedToday.steps) || 2500);
-    if (savedToday.mode) setMode(savedToday.mode);
-    if (savedToday.goal) setDailyGoal(Number(savedToday.goal) || 2000);
-    setLastSavedAt(savedToday.savedAt || null);
+    if (savedToday) {
+      setMealLog(savedToday.mealLog || makeEmptyLog());
+      setWaterCups(Number(savedToday.waterCups) || 0);
+      setSteps(Number(savedToday.steps) || 2500);
+      if (savedToday.mode) setMode(savedToday.mode);
+      if (savedToday.goal) setDailyGoal(Number(savedToday.goal) || 2000);
+      setLastSavedAt(savedToday.savedAt || null);
 
-    // Create draft from saved so dashboard stays consistent while navigating
+      // Create draft from saved so dashboard stays consistent while navigating
+      saveDraft({
+        dateKey: todayKey,
+        mealLog: savedToday.mealLog || makeEmptyLog(),
+        waterCups: Number(savedToday.waterCups) || 0,
+        steps: Number(savedToday.steps) || 2500,
+        mode: savedToday.mode || "Maintain",
+        dailyGoal: Number(savedToday.goal) || 2000,
+        lastSavedAt: savedToday.savedAt || null,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ KEEP DRAFT UPDATED (so dashboard doesn't clear after navigation)
+  useEffect(() => {
     saveDraft({
       dateKey: todayKey,
-      mealLog: savedToday.mealLog || makeEmptyLog(),
-      waterCups: Number(savedToday.waterCups) || 0,
-      steps: Number(savedToday.steps) || 2500,
-      mode: savedToday.mode || "Maintain",
-      dailyGoal: Number(savedToday.goal) || 2000,
-      lastSavedAt: savedToday.savedAt || null,
+      mealLog,
+      waterCups,
+      steps,
+      mode,
+      dailyGoal,
+      lastSavedAt,
       updatedAt: new Date().toISOString(),
     });
+  }, [todayKey, mealLog, waterCups, steps, mode, dailyGoal, lastSavedAt]);
+
+  function safeMealLog(x) {
+    const base = { Breakfast: [], Lunch: [], Dinner: [], Snack: [] };
+    if (!x || typeof x !== "object") return base;
+    return {
+      Breakfast: Array.isArray(x.Breakfast) ? x.Breakfast : [],
+      Lunch: Array.isArray(x.Lunch) ? x.Lunch : [],
+      Dinner: Array.isArray(x.Dinner) ? x.Dinner : [],
+      Snack: Array.isArray(x.Snack) ? x.Snack : [],
+    };
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
 
+  // Merge old + new meal logs WITHOUT deleting old items.
+  // Also tries to avoid duplicates by (description+grams+kcal+ts).
+  function mergeMealLogs(oldLog, newLog) {
+    const o = safeMealLog(oldLog);
+    const n = safeMealLog(newLog);
 
-  // useEffect(() => {
-  //   saveDraft({
-  //     dateKey: todayKey,
-  //     mealLog,
-  //     waterCups,
-  //     steps,
-  //     mode,
-  //     dailyGoal,
-  //     lastSavedAt,
-  //     updatedAt: new Date().toISOString(),
-  //   });
-  // }, [todayKey, mealLog, waterCups, steps, mode, dailyGoal, lastSavedAt]);
- function safeMealLog(x) {
-  const base = { Breakfast: [], Lunch: [], Dinner: [], Snack: [] };
-  if (!x || typeof x !== "object") return base;
-  return {
-    Breakfast: Array.isArray(x.Breakfast) ? x.Breakfast : [],
-    Lunch: Array.isArray(x.Lunch) ? x.Lunch : [],
-    Dinner: Array.isArray(x.Dinner) ? x.Dinner : [],
-    Snack: Array.isArray(x.Snack) ? x.Snack : [],
-  };
-}
+    const dedupe = (items) => {
+      const seen = new Set();
+      const out = [];
+      for (const it of items) {
+        const key = [
+          String(it?.description || ""),
+          String(it?.grams || ""),
+          String(it?.kcal || ""),
+          String(it?.ts || ""),
+        ].join("|");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(it);
+      }
+      return out;
+    };
 
-// Merge old + new meal logs WITHOUT deleting old items.
-// Also tries to avoid duplicates by (description+grams+kcal+ts).
-function mergeMealLogs(oldLog, newLog) {
-  const o = safeMealLog(oldLog);
-  const n = safeMealLog(newLog);
-
-  const dedupe = (items) => {
-    const seen = new Set();
-    const out = [];
-    for (const it of items) {
-      const key = [
-        String(it?.description || ""),
-        String(it?.grams || ""),
-        String(it?.kcal || ""),
-        String(it?.ts || ""),
-      ].join("|");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(it);
-    }
-    return out;
-  };
-
-  return {
-    Breakfast: dedupe([...(o.Breakfast || []), ...(n.Breakfast || [])]),
-    Lunch: dedupe([...(o.Lunch || []), ...(n.Lunch || [])]),
-    Dinner: dedupe([...(o.Dinner || []), ...(n.Dinner || [])]),
-    Snack: dedupe([...(o.Snack || []), ...(n.Snack || [])]),
-  };
-}
+    return {
+      Breakfast: dedupe([...(o.Breakfast || []), ...(n.Breakfast || [])]),
+      Lunch: dedupe([...(o.Lunch || []), ...(n.Lunch || [])]),
+      Dinner: dedupe([...(o.Dinner || []), ...(n.Dinner || [])]),
+      Snack: dedupe([...(o.Snack || []), ...(n.Snack || [])]),
+    };
+  }
 
   // -----------------------------
   // SAVE DAY (goes to History/Analytics)
   // IMPORTANT: Save should NOT clear dashboard
   // -----------------------------
- const saveDay = () => {
-  const days = loadDays();
-  const nowIso = new Date().toISOString();
+  const saveDay = () => {
+    const days = loadDays();
+    const nowIso = new Date().toISOString();
 
-  const existing = days?.[todayKey] || null;
+    const existing = days?.[todayKey] || null;
 
-  // ✅ merge meal logs so older meals never get deleted
-  const mergedMealLog = mergeMealLogs(existing?.mealLog, mealLog);
+    // ✅ merge meal logs so older meals never get deleted
+    const mergedMealLog = mergeMealLogs(existing?.mealLog, mealLog);
 
-  // If you want “burned” from steps (simple estimate):
-  // 1000 steps ≈ ~40 kcal (very rough)
-  const burned = Math.round((Number(steps) || 0) * 0.04);
+    // 1000 steps ≈ ~40 kcal (very rough)
+    const burned = Math.round((Number(steps) || 0) * 0.04);
 
-  const totalsNow = computeTotals(mergedMealLog);
+    const totalsNow = computeTotals(mergedMealLog);
 
-  days[todayKey] = {
-    dateKey: todayKey,
-    savedAt: nowIso,
-    mode,
-    goal: dailyGoal,
-    waterCups,
-    steps,
-    burned,                 // ✅ now stored
-    mealLog: mergedMealLog, // ✅ merged
-    totals: totalsNow,      // ✅ totals from merged data
+    days[todayKey] = {
+      dateKey: todayKey,
+      savedAt: nowIso,
+      mode,
+      goal: dailyGoal,
+      waterCups,
+      steps,
+      burned,
+      mealLog: mergedMealLog,
+      totals: totalsNow,
+    };
+
+    saveDays(days);
+
+    // update UI
+    setLastSavedAt(nowIso);
+
+    // also update draft to match merged saved day
+    setMealLog(mergedMealLog);
+    saveDraft({
+      dateKey: todayKey,
+      mealLog: mergedMealLog,
+      waterCups,
+      steps,
+      mode,
+      dailyGoal,
+      lastSavedAt: nowIso,
+      updatedAt: nowIso,
+    });
   };
-
-  saveDays(days);
-
-  // update UI
-  setLastSavedAt(nowIso);
-
-  // also update draft to match merged saved day
-  setMealLog(mergedMealLog);
-  saveDraft({
-    dateKey: todayKey,
-    mealLog: mergedMealLog,
-    waterCups,
-    steps,
-    mode,
-    dailyGoal,
-    lastSavedAt: nowIso,
-    updatedAt: nowIso,
-  });
-};
 
   // -----------------------------
   // CLEAR DAY (dashboard draft only)
@@ -337,7 +340,7 @@ function mergeMealLogs(oldLog, newLog) {
 
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch("/api/usda/search", {
+        const res = await fetch(`${API_BASE}/api/usda/search`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -367,13 +370,13 @@ function mergeMealLogs(oldLog, newLog) {
     }, 350);
 
     return () => clearTimeout(debounceRef.current);
-  }, [query, foodTypesParam]);
+  }, [query, foodTypesParam, API_BASE]);
 
   const pickFood = async (item) => {
     setPicked(null);
 
     try {
-      const res = await fetch(`/api/usda/food/${item.fdcId}`);
+      const res = await fetch(`${API_BASE}/api/usda/food/${item.fdcId}`);
       if (!res.ok) throw new Error("Failed to fetch food details");
       const data = await res.json();
 
@@ -841,8 +844,7 @@ function mergeMealLogs(oldLog, newLog) {
                   Today key: <span className="font-bold">{todayKey}</span> (local timezone)
                   {lastSavedAt ? (
                     <span className="ml-2">
-                      • Last saved:{" "}
-                      <span className="font-bold">{new Date(lastSavedAt).toLocaleString()}</span>
+                      • Last saved: <span className="font-bold">{new Date(lastSavedAt).toLocaleString()}</span>
                     </span>
                   ) : null}
                 </div>
@@ -906,7 +908,10 @@ function mergeMealLogs(oldLog, newLog) {
                   ) : (
                     <div className="mt-3 space-y-2">
                       {(mealLog[m] || []).slice(0, 6).map((item, idx) => (
-                        <div key={`${item.description}-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div
+                          key={`${item.description}-${idx}`}
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <div className="font-bold text-slate-900 leading-snug">{item.description}</div>
@@ -981,10 +986,10 @@ function mergeMealLogs(oldLog, newLog) {
         </div>
       </div>
 
-      {/* Floating chat */}
+      {/* Floating chat (✅ black icon) */}
       <button
         onClick={() => setChatOpen(true)}
-        className="fixed bottom-5 right-5 h-14 w-14 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white shadow-lg flex items-center justify-center text-xl"
+        className="fixed bottom-5 right-5 h-14 w-14 rounded-full bg-black hover:bg-gray-900 text-white shadow-lg flex items-center justify-center text-xl"
         title="NutriLite helper"
       >
         🤖
@@ -1023,7 +1028,7 @@ function mergeMealLogs(oldLog, newLog) {
             ))}
           </div>
 
-          {/* ✅ Quick Questions (default buttons) */}
+          {/* Quick Questions */}
           <div className="px-3 py-2 bg-white border-t border-slate-200">
             <div className="text-xs font-extrabold text-slate-700 mb-2">Quick questions</div>
             <div className="flex flex-wrap gap-2">
