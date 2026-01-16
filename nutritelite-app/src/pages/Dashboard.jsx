@@ -17,9 +17,6 @@ import {
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  // ✅ Render/Netlify base (empty in local dev if you use Vite proxy)
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
   // -----------------------------
   // UI / Mode
   // -----------------------------
@@ -313,6 +310,39 @@ export default function Dashboard() {
   };
 
   // -----------------------------
+  // ✅ Fetch helper: timeout + safe JSON
+  // (prevents 504 hang + "Unexpected end of JSON input")
+  // -----------------------------
+  async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      const text = await res.text();
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${text || "No response body"}`);
+      }
+
+      if (!text) return null;
+
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`Invalid JSON: ${text.slice(0, 200)}`);
+      }
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error(`Request timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  // -----------------------------
   // USDA Search (backend proxy)
   // -----------------------------
   const [query, setQuery] = useState("");
@@ -340,17 +370,22 @@ export default function Dashboard() {
 
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/usda/search`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: query.trim(),
-            pageSize: 12,
-            dataType: foodTypesParam,
-          }),
-        });
+        // ✅ POST to your local backend route: /api/usda/search
+        // (If your backend uses GET ?q=..., tell me and I’ll adjust.)
+        const data = await fetchJsonWithTimeout(
+          `/api/usda/search`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: query.trim(),
+              pageSize: 12,
+              dataType: foodTypesParam,
+            }),
+          },
+          12000
+        );
 
-        const data = await res.json();
         const foods = Array.isArray(data?.foods) ? data.foods : [];
 
         setResults(
@@ -370,15 +405,13 @@ export default function Dashboard() {
     }, 350);
 
     return () => clearTimeout(debounceRef.current);
-  }, [query, foodTypesParam, API_BASE]);
+  }, [query, foodTypesParam]);
 
   const pickFood = async (item) => {
     setPicked(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/usda/food/${item.fdcId}`);
-      if (!res.ok) throw new Error("Failed to fetch food details");
-      const data = await res.json();
+      const data = await fetchJsonWithTimeout(`/api/usda/food/${item.fdcId}`, {}, 12000);
 
       const nutrients = Array.isArray(data?.foodNutrients) ? data.foodNutrients : [];
 
@@ -916,8 +949,8 @@ export default function Dashboard() {
                             <div>
                               <div className="font-bold text-slate-900 leading-snug">{item.description}</div>
                               <div className="text-xs text-slate-600">
-                                {item.grams}g • {item.kcal} kcal • P {item.protein}g • C {item.carbs}g • F {item.fat}g{" "}
-                                {" • "}
+                                {item.grams}g • {item.kcal} kcal • P {item.protein}g • C {item.carbs}g • F{" "}
+                                {item.fat}g {" • "}
                                 {item.ts
                                   ? new Date(item.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                                   : ""}
