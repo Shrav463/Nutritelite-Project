@@ -1,36 +1,30 @@
-export async function handler(event) {
-  try {
-    if (event.httpMethod !== "POST") {
-      return {
-        statusCode: 405,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Method not allowed" }),
-      };
-    }
+import express from "express";
 
+const router = express.Router();
+
+const USDA_BASE = "https://api.nal.usda.gov/fdc/v1";
+
+// POST /api/usda/search
+router.post("/search", async (req, res) => {
+  try {
     const key = process.env.USDA_API_KEY;
     if (!key) {
-      return {
-        statusCode: 500,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Missing USDA_API_KEY in Netlify env variables" }),
-      };
+      return res.status(500).json({
+        error: "Missing USDA_API_KEY on server",
+      });
     }
 
-    const body = event.body ? JSON.parse(event.body) : {};
-    const query = (body.query || "").trim();
-    const pageSize = body.pageSize || 12;
-    const dataType = body.dataType || ["Foundation", "Branded"];
+    const query = String(req.body?.query || "").trim();
+    const pageSize = Number(req.body?.pageSize || 12);
+    const dataType = Array.isArray(req.body?.dataType)
+      ? req.body.dataType
+      : ["Foundation", "Branded"];
 
     if (!query) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Missing query in request body" }),
-      };
+      return res.status(400).json({ error: "query is required" });
     }
 
-    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}`;
+    const url = `${USDA_BASE}/foods/search?api_key=${key}`;
 
     const resp = await fetch(url, {
       method: "POST",
@@ -40,24 +34,54 @@ export async function handler(event) {
 
     const text = await resp.text();
 
+    // Always return JSON with details if USDA fails
     if (!resp.ok) {
-      return {
-        statusCode: resp.status,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "USDA API failed", details: text }),
-      };
+      return res.status(resp.status).json({
+        error: "USDA API failed",
+        details: text,
+      });
     }
 
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: text,
-    };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "Function crashed", details: String(err) }),
-    };
+    // USDA already returns JSON text
+    res.type("json").send(text);
+  } catch (e) {
+    res.status(500).json({
+      error: "Internal server error in /api/usda/search",
+      details: String(e),
+    });
   }
-}
+});
+
+// GET /api/usda/food/:fdcId
+router.get("/food/:fdcId", async (req, res) => {
+  try {
+    const key = process.env.USDA_API_KEY;
+    if (!key) {
+      return res.status(500).json({ error: "Missing USDA_API_KEY on server" });
+    }
+
+    const fdcId = req.params.fdcId;
+    if (!fdcId) return res.status(400).json({ error: "fdcId required" });
+
+    const url = `${USDA_BASE}/food/${fdcId}?api_key=${key}`;
+
+    const resp = await fetch(url);
+    const text = await resp.text();
+
+    if (!resp.ok) {
+      return res.status(resp.status).json({
+        error: "USDA API failed",
+        details: text,
+      });
+    }
+
+    res.type("json").send(text);
+  } catch (e) {
+    res.status(500).json({
+      error: "Internal server error in /api/usda/food/:fdcId",
+      details: String(e),
+    });
+  }
+});
+
+export default router;
