@@ -16,6 +16,7 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
   // -----------------------------
   // UI / Mode
@@ -318,7 +319,7 @@ export default function Dashboard() {
     const t = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
+      const res = await fetch(`${API_BASE}/api/usda/search`, ...);
       const text = await res.text();
 
       if (!res.ok) {

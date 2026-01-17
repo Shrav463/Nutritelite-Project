@@ -1,27 +1,63 @@
-import express from "express";
-import fetch from "node-fetch";
-import cors from "cors";
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-app.post("/api/usda/search", async (req, res) => {
+export async function handler(event) {
   try {
-    const USDA_KEY = process.env.USDA_API_KEY;
-    if (!USDA_KEY) return res.status(400).json({ error: "Missing USDA_API_KEY" });
+    if (event.httpMethod !== "POST") {
+      return {
+        statusCode: 405,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Method not allowed" }),
+      };
+    }
 
-    const response = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_KEY}`, {
+    const key = process.env.USDA_API_KEY;
+    if (!key) {
+      return {
+        statusCode: 500,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Missing USDA_API_KEY in Netlify env variables" }),
+      };
+    }
+
+    const body = event.body ? JSON.parse(event.body) : {};
+    const query = (body.query || "").trim();
+    const pageSize = body.pageSize || 12;
+    const dataType = body.dataType || ["Foundation", "Branded"];
+
+    if (!query) {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Missing query in request body" }),
+      };
+    }
+
+    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}`;
+
+    const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify({ query, pageSize, dataType }),
     });
 
-    const data = await response.json();
-    res.status(response.status).json(data);
-  } catch (err) {
-    res.status(500).json({ error: "USDA proxy failed", details: err.message });
-  }
-});
+    const text = await resp.text();
 
-app.listen(5000, () => console.log("✅ USDA Proxy running on http://localhost:5000"));
+    if (!resp.ok) {
+      return {
+        statusCode: resp.status,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "USDA API failed", details: text }),
+      };
+    }
+
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: text,
+    };
+  } catch (err) {
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Function crashed", details: String(err) }),
+    };
+  }
+}
