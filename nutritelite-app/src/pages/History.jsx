@@ -1,24 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
-import { loadDays } from "../utils/nutriliteStorage";
+import { loadDays, saveDays } from "../utils/nutriliteStorage";
 import NutriLiteAssistant from "../components/AIChatWidget";
 
-
 /**
- * History.jsx (UI restored to "old" layout)
- * - Keeps the NEW correct logic: reads saved days from localStorage via loadDays()
- * - Restores the "before" style: Filter/Search + summary cards + 7-day bars + macros + days list + logged meals
- *
- * Expected day shape from storage (flexible):
- * {
- *   dateKey: "YYYY-MM-DD",
- *   savedAt: ISO string,
- *   mode,
- *   goal,
- *   mealLog: { Breakfast:[], Lunch:[], Dinner:[], Snack:[] },
- *   totals: { calories, protein, carbs, fat }
- * }
+ * History.jsx
+ * - Reads saved days from localStorage via loadDays()
+ * - Adds Delete button to remove a saved day from history
  */
 
 const MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"];
@@ -59,7 +48,6 @@ function computeTotals(mealLog) {
 }
 
 function parseKeyToDate(key) {
-  // key: YYYY-MM-DD
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
 }
@@ -87,11 +75,11 @@ function fmtTime(ts) {
 
 export default function History() {
   // -----------------------------
-  // Load saved days (NEW logic)
+  // Load saved days
   // -----------------------------
   const [daysMap, setDaysMap] = useState(() => loadDays());
 
-  // Refresh if user clicks
+  // Refresh
   const refresh = () => setDaysMap(loadDays());
 
   // Keys sorted newest first
@@ -100,7 +88,7 @@ export default function History() {
     return keys.sort((a, b) => parseKeyToDate(b) - parseKeyToDate(a));
   }, [daysMap]);
 
-  // Default selection: today if exists else newest
+  // Default selection
   const todayKey = useMemo(() => getLocalDateKey(new Date()), []);
   const [selectedKey, setSelectedKey] = useState(() => {
     const initial = loadDays();
@@ -120,7 +108,7 @@ export default function History() {
 
   const selectedDayRaw = daysMap?.[selectedKey] || null;
 
-  // Normalize day fields (be defensive)
+  // Normalize day fields
   const selectedMealLog = useMemo(
     () => safeMealLog(selectedDayRaw?.mealLog),
     [selectedDayRaw]
@@ -142,17 +130,42 @@ export default function History() {
   const selectedGoal = Number(selectedDayRaw?.goal) || 2000;
   const selectedMode = selectedDayRaw?.mode || "Maintain";
 
-  // If you later store burned calories, this will pick it up.
   const burned = Number(selectedDayRaw?.burned) || 0;
   const net = Math.max(0, selectedTotals.calories - burned);
 
   // -----------------------------
-  // Filters (old UI style)
+  // ✅ Delete a day from history
   // -----------------------------
-  const [lastRange, setLastRange] = useState("14"); // days as string
-  const [mealFilter, setMealFilter] = useState("All"); // All or meal name
-  const [fromDate, setFromDate] = useState(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState(""); // yyyy-mm-dd
+  const deleteDayFromHistory = (dateKey) => {
+    const ok = window.confirm(
+      `Delete history for ${dateKey}?\n\nThis permanently removes the day from History.`
+    );
+    if (!ok) return;
+
+    const nextMap = { ...(daysMap || {}) };
+    delete nextMap[dateKey];
+
+    // Persist
+    saveDays(nextMap);
+    setDaysMap(nextMap);
+
+    // If deleting selected day, move selection
+    if (selectedKey === dateKey) {
+      const remainingKeys = Object.keys(nextMap).sort(
+        (a, b) => parseKeyToDate(b) - parseKeyToDate(a)
+      );
+      if (nextMap?.[todayKey]) setSelectedKey(todayKey);
+      else setSelectedKey(remainingKeys[0] || todayKey);
+    }
+  };
+
+  // -----------------------------
+  // Filters
+  // -----------------------------
+  const [lastRange, setLastRange] = useState("14");
+  const [mealFilter, setMealFilter] = useState("All");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [foodSearch, setFoodSearch] = useState("");
 
   const filteredKeys = useMemo(() => {
@@ -163,10 +176,11 @@ export default function History() {
     if (n > 0) {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - (n - 1));
-      keys = keys.filter((k) => parseKeyToDate(k) >= new Date(cutoff.getFullYear(), cutoff.getMonth(), cutoff.getDate()));
+      const cutoffDay = new Date(cutoff.getFullYear(), cutoff.getMonth(), cutoff.getDate());
+      keys = keys.filter((k) => parseKeyToDate(k) >= cutoffDay);
     }
 
-    // From/to date filter (if set)
+    // From/to date filter
     if (fromDate) {
       const from = parseKeyToDate(fromDate);
       keys = keys.filter((k) => parseKeyToDate(k) >= from);
@@ -183,15 +197,11 @@ export default function History() {
         const day = daysMap?.[k];
         if (!day) return false;
         const ml = safeMealLog(day.mealLog);
-        const mealsToCheck =
-          mealFilter === "All" ? MEALS : [mealFilter];
-
+        const mealsToCheck = mealFilter === "All" ? MEALS : [mealFilter];
         const items = mealsToCheck.flatMap((m) => ml[m] || []);
-        if (!q) return items.length > 0; // just meal filter
+        if (!q) return items.length > 0;
         return items.some((it) =>
-          String(it?.description || "")
-            .toLowerCase()
-            .includes(q)
+          String(it?.description || "").toLowerCase().includes(q)
         );
       });
     }
@@ -200,10 +210,9 @@ export default function History() {
   }, [allKeys, lastRange, fromDate, toDate, mealFilter, foodSearch, daysMap]);
 
   // -----------------------------
-  // 7-day bars (old UI)
+  // 7-day bars
   // -----------------------------
   const weekBars = useMemo(() => {
-    // Use selected day as "end"
     const end = selectedKey ? parseKeyToDate(selectedKey) : new Date();
     const keys = [];
     for (let i = 6; i >= 0; i--) {
@@ -212,7 +221,7 @@ export default function History() {
       keys.push(getLocalDateKey(d));
     }
 
-    return keys.map((k) => {
+    return keys.map((k, idx) => {
       const day = daysMap?.[k];
       const goal = Number(day?.goal) || selectedGoal || 2000;
       const totals = day?.totals
@@ -228,7 +237,7 @@ export default function History() {
 
       return {
         key: k,
-        label: `D${keys.indexOf(k) + 1}`,
+        label: `D${idx + 1}`,
         calories: totals.calories,
         goal,
         pct,
@@ -260,12 +269,11 @@ export default function History() {
     setFoodSearch("");
   };
 
-  // Empty state
   const noDays = filteredKeys.length === 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#e8fbf6] via-[#eafcf8] to-[#effcf8]">
-      {/* Top bar (old style) */}
+      {/* Top bar */}
       <div className="w-full bg-gradient-to-r from-[#0e8277] via-[#0f8c7d] to-[#16a34a] text-white shadow-sm">
         <div className="px-5 py-4 flex items-center justify-between">
           <div>
@@ -291,44 +299,22 @@ export default function History() {
       </div>
 
       <div className="px-5 py-5">
-        {/* Top summary cards (old style) */}
+        {/* Summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <SummaryCard
-            className="bg-[#d7fff0] border-emerald-200"
-            title="Goal"
-            value={`${selectedGoal} kcal`}
-            icon="🎯"
-          />
-          <SummaryCard
-            className="bg-[#dffcf2] border-emerald-200"
-            title="Consumed"
-            value={`${selectedTotals.calories} kcal`}
-            icon="🔥"
-          />
-          <SummaryCard
-            className="bg-[#fff7c7] border-amber-200"
-            title="Burned"
-            value={`${burned} kcal`}
-            icon="🏃‍♀️"
-          />
-          <SummaryCard
-            className="bg-[#ffe3ef] border-pink-200"
-            title="Net"
-            value={`${net} kcal`}
-            icon="🧾"
-          />
+          <SummaryCard className="bg-[#d7fff0] border-emerald-200" title="Goal" value={`${selectedGoal} kcal`} icon="🎯" />
+          <SummaryCard className="bg-[#dffcf2] border-emerald-200" title="Consumed" value={`${selectedTotals.calories} kcal`} icon="🔥" />
+          <SummaryCard className="bg-[#fff7c7] border-amber-200" title="Burned" value={`${burned} kcal`} icon="🏃‍♀️" />
+          <SummaryCard className="bg-[#ffe3ef] border-pink-200" title="Net" value={`${net} kcal`} icon="🧾" />
         </div>
 
-        {/* Main grid (old layout) */}
         <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-          {/* LEFT: Filter + Days */}
+          {/* LEFT */}
           <div className="xl:col-span-5 space-y-5">
+            {/* Filters */}
             <Card className="bg-white/80">
               <div>
                 <h2 className="text-lg font-extrabold text-slate-900">Filter & Search</h2>
-                <p className="text-sm text-slate-600">
-                  Find a day by date, meal type, or food name.
-                </p>
+                <p className="text-sm text-slate-600">Find a day by date, meal type, or food name.</p>
               </div>
 
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -440,40 +426,50 @@ export default function History() {
                     const d = daysMap?.[k];
                     const goal = Number(d?.goal) || 2000;
                     const ml = safeMealLog(d?.mealLog);
-                    const totals = d?.totals ? {
-                      calories: Number(d.totals.calories) || 0,
-                      protein: Number(d.totals.protein) || 0,
-                      carbs: Number(d.totals.carbs) || 0,
-                      fat: Number(d.totals.fat) || 0,
-                    } : computeTotals(ml);
+                    const totals = d?.totals
+                      ? {
+                          calories: Number(d.totals.calories) || 0,
+                          protein: Number(d.totals.protein) || 0,
+                          carbs: Number(d.totals.carbs) || 0,
+                          fat: Number(d.totals.fat) || 0,
+                        }
+                      : computeTotals(ml);
 
                     const isSelected = k === selectedKey;
 
                     return (
-                      <button
+                      <div
                         key={k}
-                        onClick={() => setSelectedKey(k)}
                         className={[
-                          "w-full text-left rounded-2xl border px-4 py-3",
-                          isSelected
-                            ? "bg-emerald-50 border-emerald-200"
-                            : "bg-white border-slate-200 hover:bg-slate-50",
+                          "w-full rounded-2xl border px-4 py-3 flex items-start gap-3",
+                          isSelected ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200 hover:bg-slate-50",
                         ].join(" ")}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="font-extrabold text-slate-900">{fmtDayTitle(k)}</div>
-                          <div className="text-xs text-slate-500">{k}</div>
-                        </div>
-                        <div className="text-xs text-slate-600 mt-1">
-                          Intake: <span className="font-bold">{totals.calories} kcal</span> • Goal:{" "}
-                          <span className="font-bold">{goal} kcal</span>
-                        </div>
-                        {d?.savedAt && (
-                          <div className="text-[11px] text-slate-500 mt-1">
-                            Saved: {new Date(d.savedAt).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+                        <button onClick={() => setSelectedKey(k)} className="flex-1 text-left">
+                          <div className="flex items-center justify-between">
+                            <div className="font-extrabold text-slate-900">{fmtDayTitle(k)}</div>
+                            <div className="text-xs text-slate-500">{k}</div>
                           </div>
-                        )}
-                      </button>
+                          <div className="text-xs text-slate-600 mt-1">
+                            Intake: <span className="font-bold">{totals.calories} kcal</span> • Goal:{" "}
+                            <span className="font-bold">{goal} kcal</span>
+                          </div>
+                          {d?.savedAt && (
+                            <div className="text-[11px] text-slate-500 mt-1">
+                              Saved:{" "}
+                              {new Date(d.savedAt).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+                            </div>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => deleteDayFromHistory(k)}
+                          className="shrink-0 px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-xs"
+                          title="Delete this day from history"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -481,9 +477,9 @@ export default function History() {
             </Card>
           </div>
 
-          {/* RIGHT: 7-day + macros + logged meals */}
+          {/* RIGHT */}
           <div className="xl:col-span-7 space-y-5">
-            {/* 7-day calories + macros row */}
+            {/* 7-day + macros */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               <Card className="bg-white/80">
                 <div className="font-extrabold text-slate-900">7-day calories</div>
@@ -504,16 +500,12 @@ export default function History() {
                   ))}
                 </div>
 
-                <div className="mt-3 text-xs text-slate-500">
-                  Tip: bars represent % of the day’s goal.
-                </div>
+                <div className="mt-3 text-xs text-slate-500">Tip: bars represent % of the day’s goal.</div>
               </Card>
 
               <Card className="bg-white/80">
                 <div className="font-extrabold text-slate-900">Macros today</div>
-                <div className="text-sm text-slate-600">
-                  Calories + protein/carbs/fat totals for the selected day.
-                </div>
+                <div className="text-sm text-slate-600">Calories + protein/carbs/fat totals for the selected day.</div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <MiniStat label="Protein" value={`${selectedTotals.protein} g`} />
@@ -531,9 +523,7 @@ export default function History() {
                   <div className="font-extrabold text-slate-900">
                     Logged meals — {selectedKey ? fmtShortDate(selectedKey) : "—"}
                   </div>
-                  <div className="text-sm text-slate-600">
-                    Food items, portions, and timestamps (local time).
-                  </div>
+                  <div className="text-sm text-slate-600">Food items, portions, and timestamps (local time).</div>
                 </div>
 
                 <div className="text-xs font-extrabold px-3 py-1 rounded-full bg-emerald-50 text-emerald-900 border border-emerald-200">
@@ -551,7 +541,8 @@ export default function History() {
                       <div className="flex items-center justify-between">
                         <div className="font-extrabold text-slate-900">{meal}</div>
                         <div className="text-xs text-slate-500">
-                          Totals: {t.calories} kcal • P {Math.round(t.protein)} • C {Math.round(t.carbs)} • F {Math.round(t.fat)}
+                          Totals: {t.calories} kcal • P {Math.round(t.protein)} • C {Math.round(t.carbs)} • F{" "}
+                          {Math.round(t.fat)}
                         </div>
                       </div>
 
@@ -574,9 +565,7 @@ export default function History() {
                             <tbody>
                               {items.map((it, idx) => (
                                 <tr key={`${it.description}-${idx}`} className="border-t border-slate-100">
-                                  <td className="py-2 font-bold text-slate-900">
-                                    {it.description || "—"}
-                                  </td>
+                                  <td className="py-2 font-bold text-slate-900">{it.description || "—"}</td>
                                   <td className="py-2 text-right">{Number(it.grams) || 0}</td>
                                   <td className="py-2 text-right">{Number(it.kcal) || 0}</td>
                                   <td className="py-2 text-right">{Number(it.protein) || 0}</td>
@@ -597,14 +586,15 @@ export default function History() {
           </div>
         </div>
       </div>
-<NutriLiteAssistant/>
+
+      <NutriLiteAssistant />
       <Footer />
     </div>
   );
 }
 
 /* -----------------------------
-   UI components (same feel as old)
+   UI components
 ----------------------------- */
 
 function Card({ className = "", children }) {
