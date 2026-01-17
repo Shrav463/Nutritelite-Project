@@ -314,12 +314,30 @@ export default function Dashboard() {
   // ✅ Fetch helper: timeout + safe JSON
   // (prevents 504 hang + "Unexpected end of JSON input")
   // -----------------------------
-  async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 12000) {
+   // -----------------------------
+  // ✅ Fetch helper: timeout + safe JSON
+  // Works for ANY url you pass (search + food details)
+  // -----------------------------
+   // -----------------------------
+  // ✅ Fetch helper: timeout + safe JSON
+  // Works for ANY path you pass (search + food details)
+  // -----------------------------
+  async function fetchJsonWithTimeout(path, options = {}, timeoutMs = 12000) {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs);
 
+    // Render base (your backend)
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+
+    // Build final URL:
+    // - If API_BASE exists, call Render
+    // - Else call relative (local proxy / Netlify functions)
+    const url = API_BASE
+      ? `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`
+      : path;
+
     try {
-      const res = await fetch(`${API_BASE}/api/usda/search`, ...);
+      const res = await fetch(url, { ...options, signal: controller.signal });
       const text = await res.text();
 
       if (!res.ok) {
@@ -344,7 +362,7 @@ export default function Dashboard() {
   }
 
   // -----------------------------
-  // USDA Search (backend proxy)
+  // USDA Search (Render backend)
   // -----------------------------
   const [query, setQuery] = useState("");
   const [searchType, setSearchType] = useState("All"); // All | Foundation | Branded
@@ -371,10 +389,8 @@ export default function Dashboard() {
 
     debounceRef.current = setTimeout(async () => {
       try {
-        // ✅ POST to your local backend route: /api/usda/search
-        // (If your backend uses GET ?q=..., tell me and I’ll adjust.)
         const data = await fetchJsonWithTimeout(
-          `/api/usda/search`,
+          "/api/usda/search",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -438,6 +454,7 @@ export default function Dashboard() {
       setPicked(null);
     }
   };
+
 
   const addPickedToMeal = () => {
     if (!picked) return;
