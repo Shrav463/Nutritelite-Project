@@ -227,12 +227,16 @@ export default function Dashboard() {
       const seen = new Set();
       const out = [];
       for (const it of items) {
-        const key = [
-          String(it?.description || ""),
-          String(it?.grams || ""),
-          String(it?.kcal || ""),
-          String(it?.ts || ""),
-        ].join("|");
+       const key = it?.id
+  ? String(it.id)
+  : [
+      String(it?.fdcId || ""),
+      String(it?.description || ""),
+      String(it?.grams || ""),
+      String(it?.kcal || ""),
+      String(it?.ts || ""),
+    ].join("|");
+
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(it);
@@ -432,26 +436,31 @@ export default function Dashboard() {
   };
 
   const addPickedToMeal = () => {
-    if (!picked) return;
-    const g = Number(grams) || 0;
-    const ratio = g / 100;
-    const now = new Date();
+  if (!picked) return;
+  const g = Number(grams) || 0;
+  const ratio = g / 100;
+  const now = new Date();
 
-    const food = {
-      description: picked.description,
-      brandName: picked.brandName,
-      dataType: picked.dataType,
-      grams: g,
-      kcal: Math.round((picked.per100g.kcal || 0) * ratio),
-      protein: Math.round((picked.per100g.protein || 0) * ratio * 10) / 10,
-      carbs: Math.round((picked.per100g.carbs || 0) * ratio * 10) / 10,
-      fat: Math.round((picked.per100g.fat || 0) * ratio * 10) / 10,
-      ts: now.toISOString(),
-    };
+  const food = {
+    id:
+      (globalThis.crypto?.randomUUID?.() ||
+        `food_${now.getTime()}_${Math.random().toString(16).slice(2)}`),
 
-    addFoodToLog(food);
-    setPicked(null);
+    fdcId: picked.fdcId, // keep this too (helpful)
+    description: picked.description,
+    brandName: picked.brandName,
+    dataType: picked.dataType,
+    grams: g,
+    kcal: Math.round((picked.per100g.kcal || 0) * ratio),
+    protein: Math.round((picked.per100g.protein || 0) * ratio * 10) / 10,
+    carbs: Math.round((picked.per100g.carbs || 0) * ratio * 10) / 10,
+    fat: Math.round((picked.per100g.fat || 0) * ratio * 10) / 10,
+    ts: now.toISOString(),
   };
+
+  addFoodToLog(food);
+  setPicked(null);
+};
 
   // -----------------------------
   // Chat (offline) + Default questions
