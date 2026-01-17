@@ -322,7 +322,7 @@ export default function Dashboard() {
   // ✅ Fetch helper: timeout + safe JSON
   // Works for ANY path you pass (search + food details)
   // -----------------------------
-  async function fetchJsonWithTimeout(path, options = {}, timeoutMs = 12000) {
+  async function fetchJsonWithTimeout(path, options = {}, timeoutMs = 30000) {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs);
 
