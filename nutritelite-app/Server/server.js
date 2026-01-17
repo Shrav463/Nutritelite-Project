@@ -7,41 +7,46 @@ dotenv.config();
 
 const app = express();
 
-/**
- * ✅ CORS (allow Netlify frontend + local dev)
- * Add BOTH your old Netlify domain and your current one.
- */
-const allowedOrigins = [
-  "https://nutrilite-app.netlify.app",
+// ----------------------------------------------------
+// ✅ CORS (Netlify + local dev)
+// IMPORTANT: when origin is not allowed, return an ERROR,
+// not (false). Returning false causes missing CORS headers.
+// ----------------------------------------------------
+const allowedOrigins = new Set([
+  "https://nutritelite-app.netlify.app",
   "https://reliable-jelly-ac1058.netlify.app",
   "http://localhost:5173",
-];
+]);
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (curl, server-to-server)
-      if (!origin) return callback(null, true);
+const allowedOrigins = new Set([
+  "https://nutritelite-app.netlify.app",
+  "http://localhost:5173",
+]);
 
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+const corsOptions = {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // curl/server-to-server
+    if (allowedOrigins.has(origin)) return cb(null, true);
+    return cb(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
 
-      // Do NOT crash the server for CORS; return false so browser blocks cleanly.
-      return callback(null, false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
-// Helpful for preflight requests
-app.options("*", cors());
+
+app.use(cors(corsOptions));
+
+// ✅ Preflight (must use SAME options)
+app.options("*", cors(corsOptions));
 
 app.use(express.json({ limit: "2mb" }));
 
 const PORT = process.env.PORT || 5000;
 
-// ✅ Read env fresh (don’t freeze into constants that might be undefined locally)
 const USDA_API_KEY = process.env.USDA_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -52,10 +57,10 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-/**
- * ✅ Helper: fetch with timeout + safe JSON parsing
- */
-async function fetchTextWithTimeout(url, options = {}, timeoutMs = 12000) {
+// ----------------------------------------------------
+// ✅ Helper: fetch with timeout + safe JSON parsing
+// ----------------------------------------------------
+async function fetchTextWithTimeout(url, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -77,9 +82,9 @@ function safeJsonParse(text) {
   }
 }
 
-// -----------------------------
+// ----------------------------------------------------
 // USDA Proxy (key stays server-side)
-// -----------------------------
+// ----------------------------------------------------
 app.post("/api/usda/search", async (req, res) => {
   try {
     if (!USDA_API_KEY) {
@@ -108,10 +113,9 @@ app.post("/api/usda/search", async (req, res) => {
           dataType: Array.isArray(dataType) ? dataType : undefined,
         }),
       },
-      12000
+      20000
     );
 
-    // ✅ If USDA returns non-JSON, do not crash — return helpful debug
     const data = safeJsonParse(text);
 
     if (!resp.ok) {
@@ -131,15 +135,11 @@ app.post("/api/usda/search", async (req, res) => {
 
     return res.json(data);
   } catch (err) {
-    const msg =
-      err?.name === "AbortError"
-        ? "USDA search timed out."
-        : "USDA search failed.";
-
+    const isTimeout = err?.name === "AbortError";
     console.error("USDA search failed:", err);
 
-    return res.status(err?.name === "AbortError" ? 504 : 500).json({
-      error: msg,
+    return res.status(isTimeout ? 504 : 500).json({
+      error: isTimeout ? "USDA search timed out." : "USDA search failed.",
       details: String(err),
     });
   }
@@ -160,7 +160,7 @@ app.get("/api/usda/food/:fdcId", async (req, res) => {
       fdcId
     )}?api_key=${encodeURIComponent(USDA_API_KEY)}`;
 
-    const { resp, text } = await fetchTextWithTimeout(url, {}, 12000);
+    const { resp, text } = await fetchTextWithTimeout(url, {}, 20000);
 
     const data = safeJsonParse(text);
 
@@ -181,33 +181,26 @@ app.get("/api/usda/food/:fdcId", async (req, res) => {
 
     return res.json(data);
   } catch (err) {
-    const msg =
-      err?.name === "AbortError"
-        ? "USDA food lookup timed out."
-        : "USDA food lookup failed.";
-
+    const isTimeout = err?.name === "AbortError";
     console.error("USDA food lookup failed:", err);
 
-    return res.status(err?.name === "AbortError" ? 504 : 500).json({
-      error: msg,
+    return res.status(isTimeout ? 504 : 500).json({
+      error: isTimeout ? "USDA food lookup timed out." : "USDA food lookup failed.",
       details: String(err),
     });
   }
 });
 
-// -----------------------------
+// ----------------------------------------------------
 // AI Chat (OpenAI) - returns {text}
-// -----------------------------
+// ----------------------------------------------------
 app.post("/api/chat", async (req, res) => {
   try {
     const { message } = req.body || {};
     const text = String(message || "").trim();
     if (!text) return res.status(400).json({ error: "Missing message" });
 
-    if (!openai) {
-      // IMPORTANT: keep {text} so frontend won't crash
-      return res.status(501).json({ text: "" });
-    }
+    if (!openai) return res.status(501).json({ text: "" });
 
     const system =
       "You are NutriLite Assistant. Only answer questions about NutriLite (features, navigation) and diet/calorie guidance (foods, calories, macros, portions, meal ideas). If unrelated, refuse politely.";
