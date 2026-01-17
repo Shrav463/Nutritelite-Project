@@ -16,6 +16,8 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+
+  // ✅ Render backend base (set in Netlify ENV as VITE_API_BASE_URL)
   const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
   // -----------------------------
@@ -155,7 +157,7 @@ export default function Dashboard() {
   useEffect(() => {
     const draft = loadDraft();
 
-    // 1) Prefer draft (what user is currently working on)
+    // 1) Prefer draft
     if (draft && draft.dateKey === todayKey) {
       setMealLog(draft.mealLog || makeEmptyLog());
       setWaterCups(Number(draft.waterCups) || 0);
@@ -166,7 +168,7 @@ export default function Dashboard() {
       return;
     }
 
-    // 2) If no draft, load from SAVED day (so old meals don’t disappear)
+    // 2) If no draft, load from SAVED day
     const days = loadDays();
     const savedToday = days?.[todayKey];
 
@@ -178,7 +180,6 @@ export default function Dashboard() {
       if (savedToday.goal) setDailyGoal(Number(savedToday.goal) || 2000);
       setLastSavedAt(savedToday.savedAt || null);
 
-      // Create draft from saved so dashboard stays consistent while navigating
       saveDraft({
         dateKey: todayKey,
         mealLog: savedToday.mealLog || makeEmptyLog(),
@@ -193,7 +194,7 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ KEEP DRAFT UPDATED (so dashboard doesn't clear after navigation)
+  // ✅ KEEP DRAFT UPDATED
   useEffect(() => {
     saveDraft({
       dateKey: todayKey,
@@ -218,8 +219,6 @@ export default function Dashboard() {
     };
   }
 
-  // Merge old + new meal logs WITHOUT deleting old items.
-  // Also tries to avoid duplicates by (description+grams+kcal+ts).
   function mergeMealLogs(oldLog, newLog) {
     const o = safeMealLog(oldLog);
     const n = safeMealLog(newLog);
@@ -250,21 +249,16 @@ export default function Dashboard() {
   }
 
   // -----------------------------
-  // SAVE DAY (goes to History/Analytics)
-  // IMPORTANT: Save should NOT clear dashboard
+  // SAVE DAY
   // -----------------------------
   const saveDay = () => {
     const days = loadDays();
     const nowIso = new Date().toISOString();
 
     const existing = days?.[todayKey] || null;
-
-    // ✅ merge meal logs so older meals never get deleted
     const mergedMealLog = mergeMealLogs(existing?.mealLog, mealLog);
 
-    // 1000 steps ≈ ~40 kcal (very rough)
     const burned = Math.round((Number(steps) || 0) * 0.04);
-
     const totalsNow = computeTotals(mergedMealLog);
 
     days[todayKey] = {
@@ -280,11 +274,8 @@ export default function Dashboard() {
     };
 
     saveDays(days);
-
-    // update UI
     setLastSavedAt(nowIso);
 
-    // also update draft to match merged saved day
     setMealLog(mergedMealLog);
     saveDraft({
       dateKey: todayKey,
@@ -299,8 +290,7 @@ export default function Dashboard() {
   };
 
   // -----------------------------
-  // CLEAR DAY (dashboard draft only)
-  // DOES NOT delete saved history
+  // CLEAR DAY (draft only)
   // -----------------------------
   const clearDayDraft = () => {
     setMealLog(makeEmptyLog());
@@ -311,33 +301,19 @@ export default function Dashboard() {
   };
 
   // -----------------------------
-  // ✅ Fetch helper: timeout + safe JSON
-  // (prevents 504 hang + "Unexpected end of JSON input")
-  // -----------------------------
-   // -----------------------------
-  // ✅ Fetch helper: timeout + safe JSON
-  // Works for ANY url you pass (search + food details)
-  // -----------------------------
-   // -----------------------------
-  // ✅ Fetch helper: timeout + safe JSON
-  // Works for ANY path you pass (search + food details)
+  // ✅ Fetch helper: prefixes API_BASE (Render) + timeout + safe JSON
   // -----------------------------
   async function fetchJsonWithTimeout(path, options = {}, timeoutMs = 30000) {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Render base (your backend)
-    const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
-    // Build final URL:
-    // - If API_BASE exists, call Render
-    // - Else call relative (local proxy / Netlify functions)
-    const url = API_BASE
+    // ✅ Always build full URL using API_BASE if present
+    const fullUrl = API_BASE
       ? `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`
       : path;
 
     try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
+      const res = await fetch(fullUrl, { ...options, signal: controller.signal });
       const text = await res.text();
 
       if (!res.ok) {
@@ -400,7 +376,7 @@ export default function Dashboard() {
               dataType: foodTypesParam,
             }),
           },
-          12000
+          30000
         );
 
         const foods = Array.isArray(data?.foods) ? data.foods : [];
@@ -428,7 +404,7 @@ export default function Dashboard() {
     setPicked(null);
 
     try {
-      const data = await fetchJsonWithTimeout(`/api/usda/food/${item.fdcId}`, {}, 12000);
+      const data = await fetchJsonWithTimeout(`/api/usda/food/${item.fdcId}`, {}, 30000);
 
       const nutrients = Array.isArray(data?.foodNutrients) ? data.foodNutrients : [];
 
@@ -454,7 +430,6 @@ export default function Dashboard() {
       setPicked(null);
     }
   };
-
 
   const addPickedToMeal = () => {
     if (!picked) return;
@@ -502,38 +477,14 @@ export default function Dashboard() {
   ];
 
   const QA = [
-    {
-      q: /how many calories left|remaining/i,
-      a: `Right now you’ve consumed ${totals.calories}/${dailyGoal} kcal. Remaining: ${remaining} kcal.`,
-    },
-    {
-      q: /macro|macros/i,
-      a: `Today macros: Protein ${totals.protein}g, Carbs ${totals.carbs}g, Fat ${totals.fat}g.`,
-    },
-    {
-      q: /high protein snack|protein snack/i,
-      a: "High-protein snacks: Greek yogurt, boiled eggs, cottage cheese, roasted chana, protein shake, tuna sandwich, paneer cubes, edamame.",
-    },
-    {
-      q: /maintain|maintain calories/i,
-      a: "To maintain: build each meal with protein + carbs + veggies + healthy fats. Keep portions consistent and use your Daily Goal as your daily total.",
-    },
-    {
-      q: /dinner under 500/i,
-      a: "Dinner under 500 kcal ideas: grilled chicken + salad, veggie stir-fry + tofu, dal + small rice portion, egg omelette + veggies, tuna wrap.",
-    },
-    {
-      q: /reduce carbs/i,
-      a: "To reduce carbs: swap rice/bread with veggies/salads, keep protein high (eggs/chicken/tofu), and use healthy fats in small amounts.",
-    },
-    {
-      q: /healthy breakfast/i,
-      a: "Healthy breakfasts: oats + fruit, eggs + toast, Greek yogurt + berries, poha/upma with veggies, smoothie with protein.",
-    },
-    {
-      q: /hit my calorie goal|reach my calories/i,
-      a: "To hit calories: if low, add calorie-dense items (rice/oats/nuts/peanut butter). If high, reduce oils/sugary snacks and add veggies + lean protein.",
-    },
+    { q: /how many calories left|remaining/i, a: `Right now you’ve consumed ${totals.calories}/${dailyGoal} kcal. Remaining: ${remaining} kcal.` },
+    { q: /macro|macros/i, a: `Today macros: Protein ${totals.protein}g, Carbs ${totals.carbs}g, Fat ${totals.fat}g.` },
+    { q: /high protein snack|protein snack/i, a: "High-protein snacks: Greek yogurt, boiled eggs, cottage cheese, roasted chana, protein shake, tuna sandwich, paneer cubes, edamame." },
+    { q: /maintain|maintain calories/i, a: "To maintain: build each meal with protein + carbs + veggies + healthy fats. Keep portions consistent and use your Daily Goal as your daily total." },
+    { q: /dinner under 500/i, a: "Dinner under 500 kcal ideas: grilled chicken + salad, veggie stir-fry + tofu, dal + small rice portion, egg omelette + veggies, tuna wrap." },
+    { q: /reduce carbs/i, a: "To reduce carbs: swap rice/bread with veggies/salads, keep protein high (eggs/chicken/tofu), and use healthy fats in small amounts." },
+    { q: /healthy breakfast/i, a: "Healthy breakfasts: oats + fruit, eggs + toast, Greek yogurt + berries, poha/upma with veggies, smoothie with protein." },
+    { q: /hit my calorie goal|reach my calories/i, a: "To hit calories: if low, add calorie-dense items (rice/oats/nuts/peanut butter). If high, reduce oils/sugary snacks and add veggies + lean protein." },
   ];
 
   const sendChat = () => {
@@ -551,11 +502,7 @@ export default function Dashboard() {
     setChatMsgs((prev) => [...prev, { role: "assistant", text: answer }]);
   };
 
-  const askQuick = (text) => {
-    setChatText(text);
-    // If you want auto-send, uncomment:
-    // setTimeout(() => sendChat(), 0);
-  };
+  const askQuick = (text) => setChatText(text);
 
   // -----------------------------
   // UI styles
@@ -583,16 +530,10 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              to="/history"
-              className="px-4 py-2 rounded-xl bg-white/15 border border-white/25 hover:bg-white/20 font-bold"
-            >
+            <Link to="/history" className="px-4 py-2 rounded-xl bg-white/15 border border-white/25 hover:bg-white/20 font-bold">
               History
             </Link>
-            <Link
-              to="/analytics"
-              className="px-4 py-2 rounded-xl bg-white/15 border border-white/25 hover:bg-white/20 font-bold"
-            >
+            <Link to="/analytics" className="px-4 py-2 rounded-xl bg-white/15 border border-white/25 hover:bg-white/20 font-bold">
               Analytics
             </Link>
             <button
@@ -1037,7 +978,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Floating chat (✅ black icon) */}
+      {/* Floating chat (black icon) */}
       <button
         onClick={() => setChatOpen(true)}
         className="fixed bottom-5 right-5 h-14 w-14 rounded-full bg-black hover:bg-gray-900 text-white shadow-lg flex items-center justify-center text-xl"
@@ -1079,7 +1020,6 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Quick Questions */}
           <div className="px-3 py-2 bg-white border-t border-slate-200">
             <div className="text-xs font-extrabold text-slate-700 mb-2">Quick questions</div>
             <div className="flex flex-wrap gap-2">
