@@ -18,11 +18,6 @@ const allowedOrigins = new Set([
   "http://localhost:5173",
 ]);
 
-const allowedOrigins = new Set([
-  "https://nutritelite-app.netlify.app",
-  "http://localhost:5173",
-]);
-
 const corsOptions = {
   origin: (origin, cb) => {
     if (!origin) return cb(null, true); // curl/server-to-server
