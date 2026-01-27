@@ -1,5 +1,9 @@
 NutriLite – Smart Calorie & Nutrition Tracking App
 
+
+<img width="1910" height="977" alt="Nutrilite" src="https://github.com/user-attachments/assets/c5113314-bef5-4c25-a0e5-1244e7a3ae7d" />
+
+
 NutriLite is a full-stack calorie and nutrition tracking web application powered by real USDA food data.
 It helps users track daily meals, calories, macros, water intake, and activity, while providing insights through analytics and history views.
 
